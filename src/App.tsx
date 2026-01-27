@@ -17,7 +17,7 @@ function App() {
                 setError(null);
 
                 // Загружаем CSV файл из public директории
-                const response = await fetch('./public/data.csv');
+                const response = await fetch('./data.csv');
 
                 if (!response.ok) {
                     throw new Error(`Ошибка загрузки: ${response.status}`);
