@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useMemo} from 'react';
+import React, {useState, useEffect, useMemo, useCallback} from 'react';
 import type {TableRow, ColumnFilter} from './types/data';
 import './App.css';
 
@@ -11,72 +11,7 @@ function App() {
     const [headers, setHeaders] = useState<string[]>([]);
     const [showFilters, setShowFilters] = useState<boolean>(true);
 
-    // Загрузка CSV данных
-    useEffect(() => {
-        const loadCSVData = async () => {
-            try {
-                setIsLoading(true);
-                setError(null);
-
-                const response = await fetch('/data.csv');
-
-                if (!response.ok) {
-                    throw new Error(`Ошибка загрузки: ${response.status}`);
-                }
-
-                const csvText = await response.text();
-                const parsedData = parseCSV(csvText);
-
-                if (parsedData.length > 0) {
-                    setHeaders(Object.keys(parsedData[0]));
-                    setData(parsedData);
-                    setFilteredData(parsedData);
-
-                    // Инициализация фильтров для всех столбцов
-                    const initialFilters: ColumnFilter = {};
-                    Object.keys(parsedData[0]).forEach(header => {
-                        initialFilters[header] = '';
-                    });
-                    setFilters(initialFilters);
-                }
-            } catch (err) {
-                setError(err instanceof Error ? err.message : 'Неизвестная ошибка');
-                console.error('Ошибка загрузки CSV:', err);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        loadCSVData();
-    }, []);
-
-    // Функция парсинга CSV
-    const parseCSV = (csvText: string): TableRow[] => {
-        const lines = csvText.split('\n');
-        const result: TableRow[] = [];
-
-        if (lines.length === 0) return result;
-
-        const headers = lines[0].split(',').map(header => header.trim());
-
-        for (let i = 1; i < lines.length; i++) {
-            const currentLine = lines[i].trim();
-            if (!currentLine) continue;
-
-            const values = parseCSVLine(currentLine);
-            const row: TableRow = {};
-
-            headers.forEach((header, index) => {
-                row[header] = values[index] || '';
-            });
-
-            result.push(row);
-        }
-
-        return result;
-    };
-
-    const parseCSVLine = (line: string): string[] => {
+    const parseCSVLine = useCallback((line: string): string[] => {
         const result: string[] = [];
         let currentValue = '';
         let inQuotes = false;
@@ -102,7 +37,74 @@ function App() {
 
         result.push(currentValue.trim());
         return result;
-    };
+    }, []);
+
+    // Функция парсинга CSV
+    const parseCSV = useCallback((csvText: string): TableRow[] => {
+        const lines = csvText.split('\n');
+        const result: TableRow[] = [];
+
+        if (lines.length === 0) return result;
+
+        const headers = lines[0].split(',').map(header => header.trim());
+
+        for (let i = 1; i < lines.length; i++) {
+            const currentLine = lines[i].trim();
+            if (!currentLine) continue;
+
+            const values = parseCSVLine(currentLine);
+            const row: TableRow = {};
+
+            headers.forEach((header, index) => {
+                row[header] = values[index] || '';
+            });
+
+            result.push(row);
+        }
+
+        return result;
+    }, [parseCSVLine]);
+
+    // Загрузка CSV данных
+    useEffect(() => {
+        const loadCSVData = async () => {
+            try {
+                setIsLoading(true);
+                setError(null);
+
+                const response = await fetch('/data.csv');
+
+                if (!response.ok) {
+                    setError(`Ошибка загрузки: ${response.status}`);
+                    setIsLoading(false);
+                    return;
+                }
+
+                const csvText = await response.text();
+                const parsedData = parseCSV(csvText);
+
+                if (parsedData.length > 0) {
+                    setHeaders(Object.keys(parsedData[0]));
+                    setData(parsedData);
+                    setFilteredData(parsedData);
+
+                    // Инициализация фильтров для всех столбцов
+                    const initialFilters: ColumnFilter = {};
+                    Object.keys(parsedData[0]).forEach(header => {
+                        initialFilters[header] = '';
+                    });
+                    setFilters(initialFilters);
+                }
+            } catch (err) {
+                setError(err instanceof Error ? err.message : 'Неизвестная ошибка');
+                console.error('Ошибка загрузки CSV:', err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        void loadCSVData();
+    }, [parseCSV]);
 
     // Применение фильтров
     const applyFilters = () => {
@@ -152,7 +154,7 @@ function App() {
     };
 
     // Применение фильтров по нажатию Enter
-    const handleKeyPress = (e: React.KeyboardEvent) => {
+    const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
             applyFilters();
         }
@@ -252,7 +254,7 @@ function App() {
                                             type="text"
                                             value={filters[header] || ''}
                                             onChange={(e) => handleFilterChange(header, e.target.value)}
-                                            onKeyPress={(e) => handleKeyPress(e)}
+                                            onKeyDown={handleKeyDown}
                                             placeholder={`Фильтр по "${header}"...`}
                                             className="filter-input"
                                         />
