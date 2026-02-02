@@ -10,6 +10,27 @@ function App() {
     const [error, setError] = useState<string | null>(null);
     const [headers, setHeaders] = useState<string[]>([]);
     const [showFilters, setShowFilters] = useState<boolean>(true);
+    const [isFiltering, setIsFiltering] = useState<boolean>(false);
+
+    // Хук для дебаунсинга
+    const useDebounce = <T, >(value: T, delay: number): T => {
+        const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+        useEffect(() => {
+            const handler = setTimeout(() => {
+                setDebouncedValue(value);
+            }, delay);
+
+            return () => {
+                clearTimeout(handler);
+            };
+        }, [value, delay]);
+
+        return debouncedValue;
+    };
+
+    // Дебаунсированные фильтры (300мс задержка)
+    const debouncedFilters = useDebounce(filters, 300);
 
     const parseCSVLine = useCallback((line: string): string[] => {
         const result: string[] = [];
@@ -65,6 +86,45 @@ function App() {
         return result;
     }, [parseCSVLine]);
 
+    // Оптимизированная функция фильтрации
+    const applyFilters = useCallback((filtersToApply: ColumnFilter, dataToFilter: TableRow[]) => {
+        if (Object.values(filtersToApply).every(val => !val.trim())) {
+            return dataToFilter;
+        }
+
+        return dataToFilter.filter(row => {
+            return Object.entries(filtersToApply).every(([column, filterValue]) => {
+                if (!filterValue.trim()) return true;
+
+                const cellValue = row[column]?.toLowerCase() || '';
+                const searchValue = filterValue.toLowerCase().trim();
+
+                return cellValue.includes(searchValue);
+            });
+        });
+    }, []);
+
+    // Применение фильтров с дебаунсингом
+    useEffect(() => {
+        if (data.length === 0) return;
+
+        setIsFiltering(true);
+
+        // Используем requestAnimationFrame для неблокирующей фильтрации
+        const timer = setTimeout(() => {
+            try {
+                const filtered = applyFilters(debouncedFilters, data);
+                setFilteredData(filtered);
+            } catch (err) {
+                console.error('Ошибка фильтрации:', err);
+            } finally {
+                setIsFiltering(false);
+            }
+        }, 0); // Фильтруем в следующем тике event loop
+
+        return () => clearTimeout(timer);
+    }, [debouncedFilters, data, applyFilters]);
+
     // Загрузка CSV данных
     useEffect(() => {
         const loadCSVData = async () => {
@@ -86,7 +146,6 @@ function App() {
                 if (parsedData.length > 0) {
                     setHeaders(Object.keys(parsedData[0]));
                     setData(parsedData);
-                    setFilteredData(parsedData);
 
                     // Инициализация фильтров для всех столбцов
                     const initialFilters: ColumnFilter = {};
@@ -106,69 +165,68 @@ function App() {
         void loadCSVData();
     }, [parseCSV]);
 
-    // Применение фильтров
-    const applyFilters = () => {
-        if (Object.values(filters).every(val => !val.trim())) {
-            setFilteredData(data);
-            return;
-        }
-
-        const filtered = data.filter(row => {
-            return Object.entries(filters).every(([column, filterValue]) => {
-                if (!filterValue.trim()) return true;
-
-                const cellValue = row[column]?.toLowerCase() || '';
-                const searchValue = filterValue.toLowerCase().trim();
-
-                return cellValue.includes(searchValue);
-            });
-        });
-
-        setFilteredData(filtered);
-    };
-
     // Сброс всех фильтров
-    const resetAllFilters = () => {
+    const resetAllFilters = useCallback(() => {
         const resetFilters: ColumnFilter = {};
         headers.forEach(header => {
             resetFilters[header] = '';
         });
         setFilters(resetFilters);
-        setFilteredData(data);
-    };
+    }, [headers]);
 
     // Сброс одного фильтра
-    const resetFilter = (column: string) => {
+    const resetFilter = useCallback((column: string) => {
         setFilters(prev => ({
             ...prev,
             [column]: ''
         }));
-    };
+    }, []);
 
     // Обработка изменения фильтра
-    const handleFilterChange = (column: string, value: string) => {
+    const handleFilterChange = useCallback((column: string, value: string) => {
         setFilters(prev => ({
             ...prev,
             [column]: value
         }));
-    };
+    }, []);
 
     // Применение фильтров по нажатию Enter
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
-            applyFilters();
+            // Принудительное применение фильтров
+            const filtered = applyFilters(filters, data);
+            setFilteredData(filtered);
         }
     };
 
     // Показать/скрыть панель фильтров
-    const toggleFiltersPanel = () => {
+    const toggleFiltersPanel = useCallback(() => {
         setShowFilters(!showFilters);
-    };
+    }, [showFilters]);
 
     // Получить количество активных фильтров
     const activeFiltersCount = useMemo(() => {
         return Object.values(filters).filter(val => val.trim() !== '').length;
     }, [filters]);
+
+    // Оптимизированный рендер ячеек таблицы
+    const renderTableRows = useMemo(() => {
+        if (filteredData.length === 0) return null;
+
+        const rowsToShow = filteredData.slice(0, 100);
+
+        return rowsToShow.map((row, rowIndex) => (
+            <tr key={rowIndex}>
+                {headers.map((header, cellIndex) => (
+                    <td key={`${rowIndex}-${cellIndex}`}>
+                        <div className="cell-content">
+                            {row[header] || <span className="empty-cell">—</span>}
+                        </div>
+                    </td>
+                ))}
+            </tr>
+        ));
+    }, [filteredData, headers]);
 
     if (isLoading) {
         return (
@@ -193,6 +251,7 @@ function App() {
                 <h1>CSV Таблица с фильтрами по всем столбцам</h1>
                 <p className="subtitle">
                     Фильтруйте данные по любому столбцу. Фильтры применяются вместе (логическое И)
+                    {isFiltering && <span style={{color: '#4a6cf7', marginLeft: '10px'}}>⌛ Фильтрация...</span>}
                 </p>
             </header>
 
@@ -203,8 +262,8 @@ function App() {
                         <div className="filters-title">
                             <h2>Фильтры столбцов</h2>
                             <span className={`active-filters-badge ${activeFiltersCount > 0 ? 'active' : ''}`}>
-                Активных фильтров: {activeFiltersCount}
-              </span>
+                                Активных фильтров: {activeFiltersCount}
+                            </span>
                         </div>
                         <div className="filters-actions">
                             <button
@@ -212,12 +271,6 @@ function App() {
                                 className="btn btn-toggle"
                             >
                                 {showFilters ? 'Скрыть фильтры' : 'Показать фильтры'}
-                            </button>
-                            <button
-                                onClick={applyFilters}
-                                className="btn btn-primary"
-                            >
-                                Применить фильтры
                             </button>
                             <button
                                 onClick={resetAllFilters}
@@ -278,15 +331,17 @@ function App() {
                             </div>
                             <div className="stat-item">
                                 <span className="stat-label">Отфильтровано:</span>
-                                <span className="stat-value">{filteredData.length}</span>
+                                <span className="stat-value">
+                                    {isFiltering ? '...' : filteredData.length}
+                                </span>
                             </div>
                             <div className="stat-item">
                                 <span className="stat-label">Соответствует:</span>
                                 <span className="stat-value">
-                  {data.length > 0
-                      ? `${((filteredData.length / data.length) * 100).toFixed(1)}%`
-                      : '0%'}
-                </span>
+                                    {data.length > 0 && !isFiltering
+                                        ? `${((filteredData.length / data.length) * 100).toFixed(1)}%`
+                                        : isFiltering ? '...' : '0%'}
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -307,8 +362,8 @@ function App() {
                                                 {filters[header] && (
                                                     <span className="filter-indicator"
                                                           title={`Фильтр: ${filters[header]}`}>
-                              🔍
-                            </span>
+                                                        🔍
+                                                    </span>
                                                 )}
                                             </div>
                                         </th>
@@ -316,17 +371,7 @@ function App() {
                                 </tr>
                                 </thead>
                                 <tbody>
-                                {filteredData.slice(0, 100).map((row, rowIndex) => (
-                                    <tr key={rowIndex}>
-                                        {headers.map((header, cellIndex) => (
-                                            <td key={`${rowIndex}-${cellIndex}`}>
-                                                <div className="cell-content">
-                                                    {row[header] || <span className="empty-cell">—</span>}
-                                                </div>
-                                            </td>
-                                        ))}
-                                    </tr>
-                                ))}
+                                {renderTableRows}
                                 </tbody>
                             </table>
 
@@ -345,7 +390,7 @@ function App() {
                             <p>
                                 {activeFiltersCount > 0
                                     ? 'Ни одна строка не соответствует заданным фильтрам. Попробуйте изменить условия фильтрации.'
-                                    : 'Данные не загружены или таблица пуста.'}
+                                    : 'Данные не загрузлены или таблица пуста.'}
                             </p>
                             {activeFiltersCount > 0 && (
                                 <button
@@ -358,38 +403,6 @@ function App() {
                         </div>
                     )}
                 </div>
-
-                {/* Быстрые действия */}
-                <div className="quick-actions">
-                    <div className="actions-title">Быстрые действия:</div>
-                    <div className="actions-buttons">
-                        <button
-                            onClick={() => {
-                                // Пример: фильтр для пустых значений в первом столбце
-                                const firstColumn = headers[0];
-                                if (firstColumn) {
-                                    handleFilterChange(firstColumn, '');
-                                    applyFilters();
-                                }
-                            }}
-                            className="btn btn-outline"
-                        >
-                            Показать все строки
-                        </button>
-                        <button
-                            onClick={() => {
-                                // Пример: найти строки с числовыми значениями
-                                headers.forEach(header => {
-                                    handleFilterChange(header, '');
-                                });
-                                applyFilters();
-                            }}
-                            className="btn btn-outline"
-                        >
-                            Очистить и показать все
-                        </button>
-                    </div>
-                </div>
             </main>
 
             <footer className="footer">
@@ -400,6 +413,8 @@ function App() {
                 </p>
                 <p className="footer-hint">
                     💡 Совет: Используйте Enter для быстрого применения фильтров
+                    <br/>
+                    💡 Автоматическая фильтрация с задержкой 300мс
                 </p>
             </footer>
         </div>
