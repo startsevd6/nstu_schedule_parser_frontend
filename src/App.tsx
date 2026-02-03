@@ -217,13 +217,21 @@ function App() {
 
         return rowsToShow.map((row, rowIndex) => (
             <tr key={rowIndex}>
-                {headers.map((header, cellIndex) => (
-                    <td key={`${rowIndex}-${cellIndex}`}>
-                        <div className="cell-content">
-                            {row[header] || <span className="empty-cell">—</span>}
-                        </div>
-                    </td>
-                ))}
+                {headers.map((header, cellIndex) => {
+                    const cellValue = row[header] || '';
+                    const displayValue = cellValue || <span className="empty-cell">—</span>;
+
+                    return (
+                        <td key={`${rowIndex}-${cellIndex}`}>
+                            <div
+                                className="cell-content"
+                                title={cellValue || undefined}
+                            >
+                                {displayValue}
+                            </div>
+                        </td>
+                    );
+                })}
             </tr>
         ));
     }, [filteredData, headers]);

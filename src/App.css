@@ -290,6 +290,13 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 200px;
+    position: relative;
+    cursor: default;
+}
+
+.cell-content:hover {
+    background-color: #f0f0f0;
+    border-radius: 3px;
 }
 
 .empty-cell {
