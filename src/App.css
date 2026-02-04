@@ -192,25 +192,65 @@
 
 .stats {
     display: flex;
-    gap: 30px;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 20px;
 }
 
 .stat-item {
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-start;
+    min-width: 120px;
 }
 
 .stat-label {
     font-size: 12px;
     color: #6c757d;
     margin-bottom: 4px;
+    white-space: nowrap;
 }
 
 .stat-value {
     font-size: 20px;
     font-weight: 700;
     color: #2c3e50;
+}
+
+/* Селектор количества строк */
+.rows-selector {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 4px;
+}
+
+.rows-select {
+    padding: 6px 10px;
+    border: 2px solid #dee2e6;
+    border-radius: 6px;
+    font-size: 14px;
+    background: white;
+    color: #2c3e50;
+    cursor: pointer;
+    transition: all 0.2s;
+    min-width: 100px;
+}
+
+.rows-select:focus {
+    outline: none;
+    border-color: #4a6cf7;
+    box-shadow: 0 0 0 3px rgba(74, 108, 247, 0.1);
+}
+
+.rows-info {
+    font-size: 12px;
+    color: #6c757d;
+    background: #e9ecef;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: 600;
 }
 
 /* Таблица */
@@ -311,6 +351,12 @@
     color: #6c757d;
     font-size: 14px;
     border-top: 1px solid #e9ecef;
+    line-height: 1.5;
+}
+
+.table-footer span {
+    color: #4a6cf7;
+    font-weight: 600;
 }
 
 /* Сообщение об отсутствии данных */
@@ -335,26 +381,6 @@
     max-width: 400px;
     margin-left: auto;
     margin-right: auto;
-}
-
-/* Быстрые действия */
-.quick-actions {
-    background: white;
-    border-radius: 10px;
-    padding: 20px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-}
-
-.actions-title {
-    font-weight: 600;
-    color: #2c3e50;
-    margin-bottom: 15px;
-}
-
-.actions-buttons {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
 }
 
 /* Кнопки */
@@ -430,6 +456,7 @@
     margin-top: 10px;
     font-style: italic;
     color: #17a2b8;
+    line-height: 1.6;
 }
 
 /* Адаптивность */
@@ -458,6 +485,14 @@
         flex: 1;
         min-width: 140px;
     }
+
+    .stats {
+        gap: 15px;
+    }
+
+    .stat-item {
+        min-width: 100px;
+    }
 }
 
 @media (max-width: 768px) {
@@ -471,6 +506,7 @@
 
     .stats {
         flex-direction: column;
+        align-items: stretch;
         gap: 15px;
     }
 
@@ -478,6 +514,12 @@
         flex-direction: row;
         justify-content: space-between;
         align-items: center;
+        min-width: auto;
+    }
+
+    .rows-selector {
+        justify-content: space-between;
+        width: 100%;
     }
 
     .data-table th,
@@ -488,6 +530,11 @@
 
     .cell-content {
         max-width: 150px;
+    }
+
+    .footer {
+        padding: 15px;
+        font-size: 12px;
     }
 }
 
@@ -506,11 +553,18 @@
         font-size: 13px;
     }
 
-    .actions-buttons {
-        flex-direction: column;
+    .stat-value {
+        font-size: 18px;
     }
 
-    .btn {
-        width: 100%;
+    .rows-select {
+        min-width: 80px;
+        padding: 5px 8px;
+        font-size: 13px;
+    }
+
+    .rows-info {
+        font-size: 11px;
+        padding: 3px 6px;
     }
 }

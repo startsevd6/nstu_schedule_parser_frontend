@@ -11,6 +11,8 @@ function App() {
     const [headers, setHeaders] = useState<string[]>([]);
     const [showFilters, setShowFilters] = useState<boolean>(true);
     const [isFiltering, setIsFiltering] = useState<boolean>(false);
+    const [rowsToDisplay, setRowsToDisplay] = useState<number>(100);
+    const rowsPerPageOptions = [50, 100, 200, 500, 1000];
 
     // Хук для дебаунсинга
     const useDebounce = <T, >(value: T, delay: number): T => {
@@ -209,11 +211,24 @@ function App() {
         return Object.values(filters).filter(val => val.trim() !== '').length;
     }, [filters]);
 
+    // Обработчик изменения количества отображаемых строк
+    const handleRowsToDisplayChange = useCallback((value: number) => {
+        setRowsToDisplay(value);
+    }, []);
+
+    // Рассчитываем, сколько строк показывать
+    const displayRowsCount = useMemo(() => {
+        if (rowsToDisplay >= filteredData.length) {
+            return filteredData.length;
+        }
+        return rowsToDisplay;
+    }, [rowsToDisplay, filteredData.length]);
+
     // Оптимизированный рендер ячеек таблицы
     const renderTableRows = useMemo(() => {
         if (filteredData.length === 0) return null;
 
-        const rowsToShow = filteredData.slice(0, 100);
+        const rowsToShow = filteredData.slice(0, displayRowsCount);
 
         return rowsToShow.map((row, rowIndex) => (
             <tr key={rowIndex}>
@@ -234,7 +249,7 @@ function App() {
                 })}
             </tr>
         ));
-    }, [filteredData, headers]);
+    }, [filteredData, headers, displayRowsCount]);
 
     if (isLoading) {
         return (
@@ -270,8 +285,8 @@ function App() {
                         <div className="filters-title">
                             <h2>Фильтры столбцов</h2>
                             <span className={`active-filters-badge ${activeFiltersCount > 0 ? 'active' : ''}`}>
-                                Активных фильтров: {activeFiltersCount}
-                            </span>
+                            Активных фильтров: {activeFiltersCount}
+                        </span>
                         </div>
                         <div className="filters-actions">
                             <button
@@ -330,7 +345,7 @@ function App() {
                         </div>
                     )}
 
-                    {/* Статистика */}
+                    {/* Статистика и управление отображением */}
                     <div className="stats-panel">
                         <div className="stats">
                             <div className="stat-item">
@@ -340,16 +355,35 @@ function App() {
                             <div className="stat-item">
                                 <span className="stat-label">Отфильтровано:</span>
                                 <span className="stat-value">
-                                    {isFiltering ? '...' : filteredData.length}
-                                </span>
+                                {isFiltering ? '...' : filteredData.length}
+                            </span>
                             </div>
                             <div className="stat-item">
                                 <span className="stat-label">Соответствует:</span>
                                 <span className="stat-value">
-                                    {data.length > 0 && !isFiltering
-                                        ? `${((filteredData.length / data.length) * 100).toFixed(1)}%`
-                                        : isFiltering ? '...' : '0%'}
+                                {data.length > 0 && !isFiltering
+                                    ? `${((filteredData.length / data.length) * 100).toFixed(1)}%`
+                                    : isFiltering ? '...' : '0%'}
+                            </span>
+                            </div>
+                            <div className="stat-item">
+                                <span className="stat-label">Показать строк:</span>
+                                <div className="rows-selector">
+                                    <select
+                                        value={rowsToDisplay}
+                                        onChange={(e) => handleRowsToDisplayChange(
+                                            parseInt(e.target.value)
+                                        )}
+                                        className="rows-select"
+                                    >
+                                        {rowsPerPageOptions.map((option) => (
+                                            <option key={option} value={option}>{`${option}`}</option>
+                                        ))}
+                                    </select>
+                                    <span className="rows-info">
+                                    {displayRowsCount} из {filteredData.length}
                                 </span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -370,8 +404,8 @@ function App() {
                                                 {filters[header] && (
                                                     <span className="filter-indicator"
                                                           title={`Фильтр: ${filters[header]}`}>
-                                                        🔍
-                                                    </span>
+                                                    🔍
+                                                </span>
                                                 )}
                                             </div>
                                         </th>
@@ -383,13 +417,26 @@ function App() {
                                 </tbody>
                             </table>
 
-                            {/* Предупреждение о большом количестве строк */}
-                            {filteredData.length > 100 && (
-                                <div className="table-footer">
-                                    Показано 100 из {filteredData.length} строк.
-                                    Используйте фильтры для уточнения результатов.
-                                </div>
-                            )}
+                            {/* Информация о количестве строк */}
+                            <div className="table-footer">
+                                {displayRowsCount < filteredData.length ? (
+                                    <div>
+                                        Показано {displayRowsCount} из {filteredData.length} строк.
+                                        {displayRowsCount < 1000 ? (
+                                            <span> Используйте фильтры для уточнения результатов или выберите "Все" для полного отображения.</span>
+                                        ) : (
+                                            <span> Рекомендуется использовать фильтры для работы с большим количеством данных.</span>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div>
+                                        Показаны все {filteredData.length} строк.
+                                        {filteredData.length > 1000 && (
+                                            <span> Для лучшей производительности рекомендуется использовать фильтры.</span>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     ) : (
                         <div className="no-data-message">
@@ -417,12 +464,15 @@ function App() {
                 <p>
                     Загружено строк: {data.length} |
                     Столбцов: {headers.length} |
-                    Активных фильтров: {activeFiltersCount}
+                    Активных фильтров: {activeFiltersCount} |
+                    Показано строк: {displayRowsCount}
                 </p>
                 <p className="footer-hint">
                     💡 Совет: Используйте Enter для быстрого применения фильтров
                     <br/>
                     💡 Автоматическая фильтрация с задержкой 300мс
+                    <br/>
+                    💡 Выберите количество строк для отображения в панели статистики
                 </p>
             </footer>
         </div>
