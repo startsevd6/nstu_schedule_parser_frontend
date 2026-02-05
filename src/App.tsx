@@ -1,5 +1,5 @@
-import React, {useState, useEffect, useMemo, useCallback} from 'react';
-import type {TableRow, ColumnFilter} from './types/data';
+import React, {useCallback, useEffect, useMemo, useState} from 'react';
+import type {ColumnFilter, TableRow} from './types/data';
 import './App.css';
 
 function App() {
@@ -13,6 +13,9 @@ function App() {
     const [isFiltering, setIsFiltering] = useState<boolean>(false);
     const [rowsToDisplay, setRowsToDisplay] = useState<number>(100);
     const rowsPerPageOptions = [50, 100, 200, 500, 1000];
+
+    // Индексы столбцов для выпадающих списков (0-based)
+    const SELECT_COLUMN_INDICES = useMemo(() => [1, 2, 3, 5], []); // Столбцы указаны с учётом index-1
 
     // Хук для дебаунсинга
     const useDebounce = <T, >(value: T, delay: number): T => {
@@ -127,6 +130,40 @@ function App() {
         return () => clearTimeout(timer);
     }, [debouncedFilters, data, applyFilters]);
 
+    // Получение уникальных значений для выпадающих списков
+    const selectColumnOptions = useMemo(() => {
+        const options: Record<string, string[]> = {};
+
+        SELECT_COLUMN_INDICES.forEach(index => {
+            if (index < headers.length) {
+                const header = headers[index];
+
+                // Получаем все уникальные значения для этого столбца, используем Map для сохранения порядка первого появления
+                const uniqueValuesMap = new Map<string, number>();
+
+                data.forEach(row => {
+                    const value = row[header] || '';
+                    if (value.trim() !== '' && !uniqueValuesMap.has(value)) {
+                        uniqueValuesMap.set(value, uniqueValuesMap.size); // Сохраняем порядок
+                    }
+                });
+
+                // Преобразуем Map в массив
+                const uniqueValues = Array.from(uniqueValuesMap.keys());
+
+                // Для всех столбцов кроме второго (индекс 1) сортируем по алфавиту
+                if (index !== 1) {
+                    uniqueValues.sort(); // Сортируем для удобства
+                }
+                // Для второго столбца (индекс 1) оставляем порядок как в файле
+
+                options[header] = uniqueValues;
+            }
+        });
+
+        return options;
+    }, [data, headers, SELECT_COLUMN_INDICES]);
+
     // Загрузка CSV данных
     useEffect(() => {
         const loadCSVData = async () => {
@@ -200,6 +237,11 @@ function App() {
             setFilteredData(filtered);
         }
     };
+
+    // Проверка, является ли столбец выпадающим списком
+    const isSelectColumn = useCallback((index: number) => {
+        return SELECT_COLUMN_INDICES.includes(index);
+    }, [SELECT_COLUMN_INDICES]);
 
     // Показать/скрыть панель фильтров
     const toggleFiltersPanel = useCallback(() => {
@@ -285,8 +327,8 @@ function App() {
                         <div className="filters-title">
                             <h2>Фильтры столбцов</h2>
                             <span className={`active-filters-badge ${activeFiltersCount > 0 ? 'active' : ''}`}>
-                            Активных фильтров: {activeFiltersCount}
-                        </span>
+                        Активных фильтров: {activeFiltersCount}
+                    </span>
                         </div>
                         <div className="filters-actions">
                             <button
@@ -308,39 +350,64 @@ function App() {
                     {showFilters && (
                         <div className="filters-panel">
                             <div className="filters-grid">
-                                {headers.map((header, index) => (
-                                    <div key={header} className="filter-item">
-                                        <div className="filter-header">
-                                            <label htmlFor={`filter-${index}`}>
-                                                <span className="filter-index">{index + 1}.</span>
-                                                {header}
-                                            </label>
-                                            {filters[header] && (
-                                                <button
-                                                    onClick={() => resetFilter(header)}
-                                                    className="btn-clear"
-                                                    title="Очистить фильтр"
+                                {headers.map((header, index) => {
+                                    const isSelect = isSelectColumn(index);
+                                    const options = selectColumnOptions[header] || [];
+
+                                    return (
+                                        <div key={header} className="filter-item">
+                                            <div className="filter-header">
+                                                <label htmlFor={`filter-${index}`}>
+                                                    <span className="filter-index">{index + 1}.</span>
+                                                    {header}
+                                                    {isSelect && <span className="select-indicator"
+                                                                       title="Выпадающий список">▼</span>}
+                                                </label>
+                                                {filters[header] && (
+                                                    <button
+                                                        onClick={() => resetFilter(header)}
+                                                        className="btn-clear"
+                                                        title="Очистить фильтр"
+                                                    >
+                                                        ×
+                                                    </button>
+                                                )}
+                                            </div>
+
+                                            {isSelect ? (
+                                                <select
+                                                    id={`filter-${index}`}
+                                                    value={filters[header] || ''}
+                                                    onChange={(e) => handleFilterChange(header, e.target.value)}
+                                                    className="filter-input filter-select"
                                                 >
-                                                    ×
-                                                </button>
+                                                    <option value="">Все значения</option>
+                                                    {options.map((option, optionIndex) => (
+                                                        <option key={optionIndex} value={option}>
+                                                            {option}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            ) : (
+                                                <input
+                                                    id={`filter-${index}`}
+                                                    type="text"
+                                                    value={filters[header] || ''}
+                                                    onChange={(e) => handleFilterChange(header, e.target.value)}
+                                                    onKeyDown={handleKeyDown}
+                                                    placeholder={`Фильтр по "${header}"...`}
+                                                    className="filter-input"
+                                                />
+                                            )}
+
+                                            {filters[header] && (
+                                                <div className="filter-hint">
+                                                    {isSelect ? `Выбрано: "${filters[header]}"` : `Поиск: "${filters[header]}"`}
+                                                </div>
                                             )}
                                         </div>
-                                        <input
-                                            id={`filter-${index}`}
-                                            type="text"
-                                            value={filters[header] || ''}
-                                            onChange={(e) => handleFilterChange(header, e.target.value)}
-                                            onKeyDown={handleKeyDown}
-                                            placeholder={`Фильтр по "${header}"...`}
-                                            className="filter-input"
-                                        />
-                                        {filters[header] && (
-                                            <div className="filter-hint">
-                                                Поиск: "{filters[header]}"
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
@@ -355,16 +422,16 @@ function App() {
                             <div className="stat-item">
                                 <span className="stat-label">Отфильтровано:</span>
                                 <span className="stat-value">
-                                {isFiltering ? '...' : filteredData.length}
-                            </span>
+                            {isFiltering ? '...' : filteredData.length}
+                        </span>
                             </div>
                             <div className="stat-item">
                                 <span className="stat-label">Соответствует:</span>
                                 <span className="stat-value">
-                                {data.length > 0 && !isFiltering
-                                    ? `${((filteredData.length / data.length) * 100).toFixed(1)}%`
-                                    : isFiltering ? '...' : '0%'}
-                            </span>
+                            {data.length > 0 && !isFiltering
+                                ? `${((filteredData.length / data.length) * 100).toFixed(1)}%`
+                                : isFiltering ? '...' : '0%'}
+                        </span>
                             </div>
                             <div className="stat-item">
                                 <span className="stat-label">Показать строк:</span>
@@ -381,8 +448,8 @@ function App() {
                                         ))}
                                     </select>
                                     <span className="rows-info">
-                                    {displayRowsCount} из {filteredData.length}
-                                </span>
+                                {displayRowsCount} из {filteredData.length}
+                            </span>
                                 </div>
                             </div>
                         </div>
@@ -396,20 +463,29 @@ function App() {
                             <table className="data-table">
                                 <thead>
                                 <tr>
-                                    {headers.map((header, index) => (
-                                        <th key={header}>
-                                            <div className="column-header">
-                                                <span className="column-index">{index + 1}</span>
-                                                <span className="column-title">{header}</span>
-                                                {filters[header] && (
-                                                    <span className="filter-indicator"
-                                                          title={`Фильтр: ${filters[header]}`}>
+                                    {headers.map((header, index) => {
+                                        const isSelect = isSelectColumn(index);
+                                        return (
+                                            <th key={header}>
+                                                <div className="column-header">
+                                                    <span className="column-index">{index + 1}</span>
+                                                    <span className="column-title">{header}</span>
+                                                    {isSelect && (
+                                                        <span className="filter-indicator"
+                                                              title="Фильтр с выпадающим списком">
+                                                        ▼
+                                                    </span>
+                                                    )}
+                                                    {filters[header] && (
+                                                        <span className="filter-indicator"
+                                                              title={`Фильтр: ${filters[header]}`}>
                                                     🔍
                                                 </span>
-                                                )}
-                                            </div>
-                                        </th>
-                                    ))}
+                                                    )}
+                                                </div>
+                                            </th>
+                                        );
+                                    })}
                                 </tr>
                                 </thead>
                                 <tbody>
@@ -445,7 +521,7 @@ function App() {
                             <p>
                                 {activeFiltersCount > 0
                                     ? 'Ни одна строка не соответствует заданным фильтрам. Попробуйте изменить условия фильтрации.'
-                                    : 'Данные не загрузлены или таблица пуста.'}
+                                    : 'Данные не загрузены или таблица пуста.'}
                             </p>
                             {activeFiltersCount > 0 && (
                                 <button
@@ -468,7 +544,9 @@ function App() {
                     Показано строк: {displayRowsCount}
                 </p>
                 <p className="footer-hint">
-                    💡 Совет: Используйте Enter для быстрого применения фильтров
+                    💡 Совет: Для столбцов 2, 3, 4 и 6 доступны выпадающие списки с уникальными значениями
+                    <br/>
+                    💡 Используйте Enter для быстрого применения текстовых фильтров
                     <br/>
                     💡 Автоматическая фильтрация с задержкой 300мс
                     <br/>
